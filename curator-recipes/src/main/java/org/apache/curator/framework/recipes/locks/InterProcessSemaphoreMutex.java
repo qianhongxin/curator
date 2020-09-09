@@ -27,6 +27,8 @@ import java.util.concurrent.TimeUnit;
  * A NON re-entrant mutex that works across JVMs. Uses Zookeeper to hold the lock. All processes in all JVMs that
  * use the same lock path will achieve an inter-process critical section.
  */
+// 基于 InterProcessSemaphoreV2 实现的不可重入互斥锁
+// 即最多只允许一个客户端获取信号量，这样就无法重入了，即实现了不可重入的互斥锁
 public class InterProcessSemaphoreMutex implements InterProcessLock
 {
     private final InterProcessSemaphoreV2 semaphore;
@@ -40,6 +42,7 @@ public class InterProcessSemaphoreMutex implements InterProcessLock
     public InterProcessSemaphoreMutex(CuratorFramework client, String path)
     {
         watcherRemoveClient = client.newWatcherRemoveCuratorFramework();
+        // 只允许1个客户端获取信号量
         this.semaphore = new InterProcessSemaphoreV2(watcherRemoveClient, path, 1);
     }
 

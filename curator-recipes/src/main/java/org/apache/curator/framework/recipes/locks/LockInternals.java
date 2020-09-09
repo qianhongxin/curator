@@ -41,14 +41,20 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
+// 加锁释放锁的具体操作zk的逻辑
 public class LockInternals
 {
     private final WatcherRemoveCuratorFramework     client;
+    // 锁路径
+    // 举例：/locks/lock_01/_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000001
     private final String                            path;
+    // 基本路径：/locks/lock_01
     private final String                            basePath;
     private final LockInternalsDriver               driver;
+    // 锁的名字，可以传，不传就是默认的lock-
     private final String                            lockName;
     private final AtomicReference<RevocationSpec>   revocable = new AtomicReference<RevocationSpec>(null);
+    // 监听器，当获取锁失败时加一个监听
     private final CuratorWatcher                    revocableWatcher = new CuratorWatcher()
     {
         @Override
@@ -61,15 +67,18 @@ public class LockInternals
         }
     };
 
+    // 监听器
     private final Watcher watcher = new Watcher()
     {
         @Override
         public void process(WatchedEvent event)
         {
+            // LockInternals.this就是当前的lockInternals对象
             client.postSafeNotify(LockInternals.this);
         }
     };
 
+    // 最大允许获取锁的线程数量
     private volatile int    maxLeases;
 
     static final byte[]             REVOKE_MESSAGE = "__REVOKE__".getBytes();
@@ -106,6 +115,7 @@ public class LockInternals
         this.path = ZKPaths.makePath(path, lockName);
     }
 
+    // 重置最大允许获取锁的线程数量，然后执行唤醒操作，唤醒其他等待加锁的节点
     synchronized void setMaxLeases(int maxLeases)
     {
         this.maxLeases = maxLeases;
@@ -119,8 +129,10 @@ public class LockInternals
 
     final void releaseLock(String lockPath) throws Exception
     {
+        // 移除掉当前LockInternals关联的监听器Workeres
         client.removeWatchers();
         revocable.set(null);
+        // 删除锁节点路径
         deleteOurPath(lockPath);
     }
 
@@ -147,10 +159,13 @@ public class LockInternals
         return ImmutableList.copyOf(transformed);
     }
 
+    // 对basePath下的节点做排序
     public static List<String> getSortedChildren(CuratorFramework client, String basePath, final String lockName, final LockInternalsSorter sorter) throws Exception
     {
         try
         {
+            // 所有basePath（/locks/lock_01）下的所有加锁客户端对应的标识
+            // 即_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000001，_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000002等
             List<String> children = client.getChildren().forPath(basePath);
             List<String> sortedList = Lists.newArrayList(children);
             Collections.sort
@@ -206,6 +221,7 @@ public class LockInternals
         return driver;
     }
 
+    // 加锁处理逻辑
     String attemptLock(long time, TimeUnit unit, byte[] lockNodeBytes) throws Exception
     {
         final long      startMillis = System.currentTimeMillis();
@@ -222,8 +238,9 @@ public class LockInternals
 
             try
             {
-                // 创建临时顺序节点
+                // 创建临时顺序节点，任意客户端只要没加过锁即客户端路径在zk中不存在，都会去创建
                 ourPath = driver.createsTheLock(client, path, localLockNodeBytes);
+                // 执行获取锁操作
                 hasTheLock = internalLockLoop(startMillis, millisToWait, ourPath);
             }
             catch ( KeeperException.NoNodeException e )
@@ -280,19 +297,29 @@ public class LockInternals
                 client.getData().usingWatcher(revocableWatcher).forPath(ourPath);
             }
 
+            // 自旋操作，获取锁
             while ( (client.getState() == CuratorFrameworkState.STARTED) && !haveTheLock )
             {
                 // 对basePath下所有的客户端创建的临时节点从小到大排序
+                // 只要客户端去获取锁，如果没有加过锁，就会在zk上创建一个临时顺序节点
+                // 拿到的是排好序的锁节点，比如[_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000001,_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000002]
                 List<String>        children = getSortedChildren();
+                // 截取basePath之后的字符串
+                // 即/locks/lock_01/_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000001 =》_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000001
+                // 最终得到的sequenceNodeName为_c_0abad917-53a6-4ed9-ac96-bfac3327be0d-lock-0000000001
                 String              sequenceNodeName = ourPath.substring(basePath.length() + 1); // +1 to include the slash
-
+                // 执行获取锁逻辑，返回一个predicateResults
                 PredicateResults    predicateResults = driver.getsTheLock(client, children, sequenceNodeName, maxLeases);
+                // 为ture说明当前客户端当前线程加锁成功
                 if ( predicateResults.getsTheLock() )
                 {
                     haveTheLock = true;
                 }
                 else
                 {
+                    // 走到这，说明加锁失败
+
+                    // 获取当前客户端当前线程需要监听的节点路径名称
                     String  previousSequencePath = basePath + "/" + predicateResults.getPathToWatch();
 
                     synchronized(this)
@@ -300,21 +327,28 @@ public class LockInternals
                         try
                         {
                             // use getData() instead of exists() to avoid leaving unneeded watchers which is a type of resource leak
+                            // 监听前置节点
                             client.getData().usingWatcher(watcher).forPath(previousSequencePath);
                             if ( millisToWait != null )
                             {
+                                // 走到这，说明加锁时传入了超时时间
+                                // 计算等待时间
                                 millisToWait -= (System.currentTimeMillis() - startMillis);
                                 startMillis = System.currentTimeMillis();
                                 if ( millisToWait <= 0 )
                                 {
+                                    // 走到这，说明加锁失败的等待时间已到，这里标识需要删除之前加锁节点
                                     doDelete = true;    // timed out - delete our node
                                     break;
                                 }
-
+                                // 等待时间还没到，等待指定时间
+                                // 等下次别的客户端释放锁，然后注册的监听器会收到回调，然后会触发notifyAll。然后当前客户端当前线程会从这里醒来继续往下执行
                                 wait(millisToWait);
                             }
                             else
                             {
+                                // 如果加锁时没有传入超时时间，这里就一直等，直到加锁成功。
+                                // 走到这里，需要等下次别的客户端释放锁，然后注册的监听器会收到回调，然后会触发notifyAll。然后当前客户端当前线程会从这里醒来继续往下执行
                                 wait();
                             }
                         }
@@ -329,11 +363,13 @@ public class LockInternals
         catch ( Exception e )
         {
             ThreadUtils.checkInterrupted(e);
+            // 抛出异常，也直接删除在zk中的设置的节点
             doDelete = true;
             throw e;
         }
         finally
         {
+            // 走到这，说明已经等待超时了，直接删除在zk中的设置的节点
             if ( doDelete )
             {
                 deleteOurPath(ourPath);

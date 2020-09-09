@@ -20,7 +20,9 @@ package org.apache.curator.framework.recipes.locks;
 
 public class PredicateResults
 {
+    // 加锁成功还是失败标识
     private final boolean   getsTheLock;
+    // 前一个节点名称
     private final String    pathToWatch;
 
     public PredicateResults(String pathToWatch, boolean getsTheLock)

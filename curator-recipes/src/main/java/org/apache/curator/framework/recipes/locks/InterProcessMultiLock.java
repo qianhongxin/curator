@@ -32,8 +32,10 @@ import static com.google.common.collect.Lists.reverse;
  * all the locks are acquired. If that fails, any paths that were acquired are released. Similarly, when
  * {@link #release()} is called, all locks are released (failures are ignored).
  */
+// 一次性加多把锁的锁
 public class InterProcessMultiLock implements InterProcessLock
 {
+    // 持有的多把锁
     private final List<InterProcessLock> locks;
 
     /**
@@ -87,6 +89,7 @@ public class InterProcessMultiLock implements InterProcessLock
         Exception                   exception = null;
         List<InterProcessLock>      acquired = Lists.newArrayList();
         boolean                     success = true;
+        // 依次对每把锁进行加锁，只要有一个失败都释放锁
         for ( InterProcessLock lock : locks )
         {
             try

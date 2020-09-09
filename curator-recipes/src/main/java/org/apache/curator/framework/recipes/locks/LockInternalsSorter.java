@@ -18,6 +18,7 @@
  */
 package org.apache.curator.framework.recipes.locks;
 
+// 锁排序接口
 public interface LockInternalsSorter
 {
     public String           fixForSorting(String str, String lockName);

@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * NOTE: depending on its implementation, {@link #release()} may throw an exception if the current thread does not own the lock
  */
+// 锁接口，类似aqs
+// 锁是基于zk的临时顺序节点实现的。客户端宕机时节点自动释放，多个客户端加锁时，会依次按顺序创建对应的节点。
 public interface InterProcessLock
 {
     /**

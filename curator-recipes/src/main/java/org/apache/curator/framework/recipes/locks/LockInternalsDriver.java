@@ -21,6 +21,7 @@ package org.apache.curator.framework.recipes.locks;
 import org.apache.curator.framework.CuratorFramework;
 import java.util.List;
 
+// 加锁时和zk的访问驱动器
 public interface LockInternalsDriver extends LockInternalsSorter
 {
     public PredicateResults getsTheLock(CuratorFramework client, List<String> children, String sequenceNodeName, int maxLeases) throws Exception;
