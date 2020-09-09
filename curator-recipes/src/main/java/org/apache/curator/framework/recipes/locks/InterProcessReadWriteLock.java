@@ -244,6 +244,7 @@ public class InterProcessReadWriteLock
             // 但是这个给第一个写锁加监听有一个问题：
                 //问题就是容易引发羊群效应，比如第一个写锁后面排了2000个读锁节点，那当这个写锁释放后，需要通知2000个加锁节点来争抢锁，这个网络通信的带宽占用挺大啊。如果当前zk中有多个这种情况的写锁，那网络带宽严重占用啊。这是缺点。
                 // 改进羊群效应：改进225行的算法，不要只监听第一个写锁，而是监听当前读锁节点前面最近的一个写锁节点。这样比如2000个读锁节点就分可以分摊到各个写锁节点的上，减轻羊群效应。如果就一个写锁节点那就无解了
+                // InterProcessMutex，信号量，不可重入锁，读写锁的写锁那些都没有羊群效应问题，他们都是基于InterProcessMutex实现的加锁，等待节点都是监听前一个节点，公平的。既然都是监听前一个节点，就不存在羊群效应啊。只有这个读写锁的读 锁这里实现有问题，可以优化。
         String      pathToWatch = getsTheLock ? null : children.get(firstWriteIndex);
         return new PredicateResults(pathToWatch, getsTheLock);
     }
