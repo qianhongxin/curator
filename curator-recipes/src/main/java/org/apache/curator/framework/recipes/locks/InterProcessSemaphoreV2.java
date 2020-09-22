@@ -313,7 +313,7 @@ public class InterProcessSemaphoreV2
                     {
                         case CONTINUE:
                         {
-                            // 获取信号量陈宫，退出循环
+                            // 获取信号量成功，退出循环
                             isDone = true;
                             break;
                         }

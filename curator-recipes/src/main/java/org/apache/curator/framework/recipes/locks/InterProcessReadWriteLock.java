@@ -82,7 +82,7 @@ public class InterProcessReadWriteLock
     // 实现了InterProcessMutex
     private static class InternalInterProcessMutex extends InterProcessMutex
     {
-        // 锁名称
+        // 锁前缀
         private final String lockName;
         // lockData
         private final byte[] lockData;
